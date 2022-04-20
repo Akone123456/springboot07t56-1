@@ -12,6 +12,7 @@ import java.util.List;
 import javax.servlet.http.HttpServletRequest;
 
 import com.entity.FaceDataEntity;
+import com.entity.TokenEntity;
 import com.service.FaceDateService;
 import com.utils.*;
 import org.apache.commons.lang3.StringUtils;
@@ -94,32 +95,32 @@ public class YonghuController {
 	 * @return
 	 */
 	@RequestMapping("/addFaceData")
-	public MessUtil addFaceData(YonghuEntity user) {
+	public R addFaceData(YonghuEntity user) {
 
 
-		MessUtil resBody = new MessUtil();
+		String token = null;
 		if (user.getImg() != null && user.getId() != null) {//必须让前端把用户id和采集的用户base64位的图片传递过来
 			byte[] bytes = ImageUtils.base64ToByte(user.getImg());//base64位图转成byte[]
-
+			TokenEntity tokenEntity = tokenService.selectById(user.getId());
+			token = tokenEntity.getToken();
 			FaceData faceData = null;
 			try {
 				faceData = FaceUtils.getFaceData(bytes);
 			} catch (Exception e) {
 				e.printStackTrace();
-				resBody.setStatus(0);
-				resBody.setMsg("未检测到人脸-请正对摄像头重新识别-也可能你的浏览器没唤起摄像头");
-				return resBody;
+				return R.error(0,"未检测到人脸-请正对摄像头重新识别-也可能你的浏览器没唤起摄像头")
+						.put("token",token);
 			}
 
 			//判断是否检测到人脸
 
 			if (faceData == null || faceData.getValidateFace() != 0) {
-				resBody.setStatus(0);
-				resBody.setMsg("人脸检测失败-请正对摄像头");
+				return R.error(0,"人脸检测失败-请正对摄像头")
+						.put("token",token);
 
 			} else if (faceData.getValidatePoint() != 0) {
-				resBody.setStatus(0);
-				resBody.setMsg("获取人脸特征值失败-请重新采集");
+				return R.error(0,"获取人脸特征值失败-请重新采集")
+						.put("token",token);
 			} else {
 				// TODO
 				FaceDataEntity faceDataEntity = new FaceDataEntity();
@@ -127,16 +128,14 @@ public class YonghuController {
 				faceDataEntity.setId(user.getId());
 				//EntityWrapper<FaceDataEntity> ew = new EntityWrapper<>(faceDataEntity);
 				faceDateService.insert(faceDataEntity);
-				resBody.setStatus(1);
-				resBody.setMsg("您的人脸采集成功");
+				return R.error(1,"您的人脸采集成功")
+						.put("token",token);
 			}
 
 		} else {
-			resBody.setStatus(0);
-			resBody.setMsg("摄像头未开启或者是未登陆等违规操作");
+			return R.error(0,"摄像头未开启或者是未登陆等违规操作")
+					.put("token",token);
 		}
-		return resBody;
-
 	}
 
 	/**
