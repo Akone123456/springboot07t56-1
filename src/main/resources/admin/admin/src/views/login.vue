@@ -51,12 +51,27 @@
           <el-form-item class="setting">
             <div class="register" @click="register('yonghu')">注册用户</div>
             <div class="register" @click="register('yunshugongsi')">注册运输公司</div>
+            <div class="register" @click="dialogForm.dialogFormVisible = true">人脸登录</div>
             <!-- <div style="color:${template2.back.login.loginInSettingFontColor}" class="reset">修改密码</div> -->
           </el-form-item>
         </el-form>
+
       </div>
 
     </div>
+    <el-dialog title="人脸识别" :visible.sync="dialogForm.dialogFormVisible" width="30%"
+               style="text-align: center">
+      <div class="container" style="text-align: center;">
+        <video id="video" width="320" height="250">  </video>
+        <p id="video_tip" >脸部识别中，请正脸看向摄像头</p>
+        <canvas id="canvas" width="480" height="320" style="display: none;"></canvas>
+        <p id="result"></p>
+      </div>
+
+      <div slot="footer" class="dialog-footer" style="text-align: center">
+        <el-button type="primary" @click="saveFaceData()">识别登录</el-button>
+      </div>
+    </el-dialog>
   </div>
 </template>
 <script>
@@ -66,6 +81,15 @@ import menu from "@/utils/menu";
 export default {
   data() {
     return {
+      video: null,
+      canvas : null,
+      context : null,
+      dialogForm:{
+        dialogFormVisible:false
+      },
+      faceData:{
+        img:''
+      },
       rulesForm: {
         username: "",
         password: "",
@@ -109,9 +133,96 @@ export default {
   },
   created() {
     this.getRandCode()
-	
   },
   methods: {
+    init(){
+      const that = this
+      this.$nextTick(() => {
+        that.canvas = document.getElementById('canvas');
+        that.context = this.canvas.getContext('2d')
+        console.log(that.context)
+        that.video = document.getElementById('video');
+        // 旧版本浏览器可能根本不支持mediaDevices，我们首先设置一个空对象
+        if (navigator.mediaDevices === undefined) {
+          navigator.mediaDevices = {}
+        }
+        // 一些浏览器实现了部分mediaDevices，我们不能只分配一个对象
+        // 使用getUserMedia，因为它会覆盖现有的属性。
+        // 这里，如果缺少getUserMedia属性，就添加它。
+        if (navigator.mediaDevices.getUserMedia === undefined) {
+          navigator.mediaDevices.getUserMedia = function (constraints) {
+            // 首先获取现存的getUserMedia(如果存在)
+            var getUserMedia = navigator.webkitGetUserMedia || navigator.mozGetUserMedia || navigator.getUserMedia
+            // 有些浏览器不支持，会返回错误信息
+            // 保持接口一致
+            if (!getUserMedia) {
+              return Promise.reject(new Error('getUserMedia is not implemented in this browser'))
+            }
+            // 否则，使用Promise将调用包装到旧的navigator.getUserMedia
+            return new Promise(function (resolve, reject) {
+              getUserMedia.call(navigator, constraints, resolve, reject)
+            })
+          }
+        }
+        var constraints = {
+          audio: false,
+          video: {width: this.videoWidth, height: this.videoHeight, transform: 'scaleX(-1)'}
+        }
+        navigator.mediaDevices.getUserMedia(constraints).then(function (stream) {
+          // 旧的浏览器可能没有srcObject
+          if ('srcObject' in that.video) {
+            that.video.srcObject = stream
+          } else {
+            // 避免在新的浏览器中使用它，因为它正在被弃用。
+            that.video.src = window.URL.createObjectURL(stream)
+          }
+          that.video.onloadedmetadata = function () {
+            that.video.play()
+          }
+        }).catch(err => {
+          console.log(err)
+        })
+      })
+    },
+    getFace() {
+      this.init()
+      this.context.drawImage(this.video, 0, 0, 150, 150);
+      var imgSrc = this.canvas.toDataURL('image/jpg')
+      //获取完整的base64编码
+      imgSrc = imgSrc.split(',')[1];
+      return imgSrc;
+    },
+    saveFaceData(){
+      this.faceData.img = this.getFace()
+      console.log(this.faceData.img)
+      let data ={
+        img:this.faceData.img
+      }
+      this.$http({
+        url: `${this.$storage.get("sessionTable")}/yonghu/faceMatch`,
+        method: "post",
+        data: data
+      }).then(({data}) => {
+        if (data.code === 1) {
+          this.$message({
+            message: data.msg,
+            type: "success",
+            duration: 1500
+          })
+          this.$storage.set("Token", data.token);
+          this.$storage.set("role", this.rulesForm.role);
+          this.$storage.set("sessionTable", this.tableName);
+          this.$storage.set("adminName", this.rulesForm.username);
+          this.$router.replace({ path: "/index/" });
+        }else{
+          this.$message({
+            message: data.msg,
+            type: "error",
+            duration: 1500
+          })
+        }
+      })
+    },
     register(tableName){
       this.$storage.set("loginTable", tableName);
       this.$router.push({path:'/register'})
@@ -205,7 +316,7 @@ export default {
   background-position: center center;
   background-size: cover;
       background-image: url(http://codegen.caihongy.cn/20211113/7fb6ad56c6dc403e9855d935edc40558.jpg);
-    
+
 
   .loginInBt {
     width: 200px;
@@ -535,7 +646,7 @@ export default {
       }
     }
   }
-  
+
   & /deep/ .el-form-item__label {
 	width: 30px;
 	height: 30px;
